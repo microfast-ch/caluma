@@ -12,6 +12,7 @@ from django.db.models.constants import LOOKUP_SEP
 from django.db.models.expressions import OrderBy, RawSQL
 from django.db.models.functions import Cast
 from django.utils import translation
+from django_filters.conf import settings as filters_settings
 from django_filters.constants import EMPTY_VALUES
 from django_filters.fields import ChoiceField
 from django_filters.rest_framework import (
@@ -384,6 +385,8 @@ class OrderingFilter(OrderingFilter):
             "modified_at",
             "created_by_user",
             "created_by_group",
+            "modified_by_user",
+            "modified_by_group",
             *[f"meta_{f}" for f in settings.META_FIELDS],
         )
 
@@ -423,6 +426,8 @@ class IntegerFilter(Filter):
 class FilterSet(GrapheneFilterSetMixin, FilterSet):
     created_by_user = CharFilter()
     created_by_group = CharFilter()
+    modified_by_user = CharFilter()
+    modified_by_group = CharFilter()
 
     created_before = DateTimeFilter(
         field_name="created_at",
@@ -441,6 +446,7 @@ class JSONLookupMode(Enum):
     STARTSWITH = "startswith"
     CONTAINS = "contains"
     ICONTAINS = "icontains"
+    IN = "in"
     GTE = "gte"
     GT = "gt"
     LTE = "lte"
@@ -460,6 +466,11 @@ class JSONValueFilterField(CompositeFieldClass):
 class JSONValueFilter(Filter):
     field_class = JSONValueFilterField
 
+    def __init__(self, *args, lookup_expr=None, **kwargs):
+        if lookup_expr is None:
+            lookup_expr = JSONLookupMode.get(filters_settings.DEFAULT_LOOKUP_EXPR)
+        super().__init__(*args, lookup_expr=lookup_expr, **kwargs)
+
     def filter(self, qs, value):
         if value in EMPTY_VALUES:
             return qs
@@ -468,7 +479,9 @@ class JSONValueFilter(Filter):
             if expr in EMPTY_VALUES:  # pragma: no cover
                 continue
 
-            lookup_expr = expr.get("lookup", self.lookup_expr)
+            lookup = expr.get("lookup") or self.lookup_expr
+            lookup_expr = (hasattr(lookup, "value") and lookup.value) or lookup
+
             # "contains" behaves differently on JSONFields as it does on TextFields.
             # That's why we annotate the queryset with the value.
             # Some discussion about it can be found here:

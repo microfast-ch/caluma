@@ -33,10 +33,18 @@ class FormFilterSet(MetaFilterSet):
     slugs = SlugMultipleChoiceFilter(field_name="slug")
     slug = CharFilter()
     slug.deprecation_reason = "Use the `slugs` (plural) filter instead, which allows filtering for multiple slugs"
+    questions = SlugMultipleChoiceFilter(field_name="questions__slug")
 
     class Meta:
         model = models.Form
-        fields = ("slug", "name", "description", "is_published", "is_archived")
+        fields = (
+            "slug",
+            "name",
+            "description",
+            "is_published",
+            "is_archived",
+            "questions",
+        )
 
 
 class FormOrderSet(FilterSet):
@@ -48,6 +56,8 @@ class FormOrderSet(FilterSet):
             "modified_at",
             "created_by_user",
             "created_by_group",
+            "modified_by_user",
+            "modified_by_group",
             "slug",
             "name",
             "description",
@@ -80,7 +90,15 @@ class QuestionFilterSet(MetaFilterSet):
 
     class Meta:
         model = models.Question
-        fields = ("slug", "label", "is_required", "is_hidden", "is_archived")
+        fields = (
+            "slug",
+            "label",
+            "is_required",
+            "is_hidden",
+            "is_archived",
+            "sub_form",
+            "row_form",
+        )
 
 
 class QuestionOrderSet(FilterSet):
@@ -191,6 +209,7 @@ class HasAnswerFilter(Filter):
 
     def apply_expr(self, qs, expr):
         lookup = expr.get("lookup", self.lookup_expr)
+        lookup_expr = (hasattr(lookup, "value") and lookup.value) or lookup
 
         question_slug = expr["question"]
         match_value = expr.get("value")
@@ -225,7 +244,7 @@ class HasAnswerFilter(Filter):
         else:
             answers = answers.filter(
                 **{
-                    f"{answer_value}__{lookup}": match_value,
+                    f"{answer_value}__{lookup_expr}": match_value,
                     "question__slug": question_slug,
                 }
             )
@@ -250,6 +269,7 @@ class HasAnswerFilter(Filter):
             )
 
         if lookup not in valid_lookups:
+            lookup = (hasattr(lookup, "value") and lookup.value) or lookup
             raise exceptions.ValidationError(
                 f"Invalid lookup for question slug={question.slug} ({question.type.upper()}): {lookup.upper()}"
             )
